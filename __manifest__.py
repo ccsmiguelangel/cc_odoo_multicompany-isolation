@@ -7,6 +7,7 @@
     'data': [
         'security/record_rules.xml',
     ],
+    'author': 'Miguel Peña <miguel.angel@exagon.es>',
     'installable': True,
     'application': False,
     'license': 'LGPL-3',
