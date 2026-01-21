@@ -3,24 +3,36 @@
     <data noupdate="0">
         <!-- 
             Reglas de aislamiento ESTRICTO multicompañía.
-            Aplican a usuarios internos (group_user), públicos (group_public) y portal (group_portal).
-            Los administradores tienen acceso completo para gestionar todas las compañías.
             
-            IMPORTANTE: NO se permite ver contactos con company_id = False (globales).
+            IMPORTANTE: 
+            - NO se permite ver contactos con company_id = False (globales).
+            - Cada usuario solo ve contactos de su empresa actual.
+            - Excepción: usuarios siempre pueden ver su propio partner (necesario para Odoo).
         -->
         
-        <!-- ==================== DESACTIVAR REGLA ESTÁNDAR DE ODOO ==================== -->
-        <!-- La regla estándar permite ver contactos globales, debemos desactivarla -->
+        <!-- ==================== DESACTIVAR REGLAS ESTÁNDAR DE ODOO ==================== -->
+        <!-- Desactivar TODAS las reglas de partners de Odoo para evitar conflictos -->
         <record id="base.res_partner_rule" model="ir.rule">
             <field name="active" eval="False"/>
         </record>
         
-        <!-- ==================== RES.PARTNER RULES (ESTRICTAS) ==================== -->
+        <!-- ==================== REGLA GLOBAL (SIN GRUPO) ==================== -->
+        <!-- Esta regla aplica a TODOS los usuarios, incluyendo admins -->
+        <!-- Permite: contactos de la empresa actual O el propio partner del usuario -->
+        <record id="res_partner_company_isolation_global" model="ir.rule">
+            <field name="name">Partner Company Isolation (Global - All Users)</field>
+            <field name="model_id" ref="base.model_res_partner"/>
+            <field name="global" eval="True"/>
+            <field name="domain_force">['|', ('company_id', 'in', company_ids), ('id', '=', user.partner_id.id)]</field>
+        </record>
+        
+        <!-- ==================== RES.PARTNER RULES POR GRUPO ==================== -->
+        <!-- Estas reglas se combinan con la global mediante OR (mismo modelo, diferentes grupos) -->
         <record id="res_partner_isolation_rule" model="ir.rule">
             <field name="name">Partner Multi-Company Isolation (Internal Users)</field>
             <field name="model_id" ref="base.model_res_partner"/>
             <field name="groups" eval="[(4, ref('base.group_user'))]"/>
-            <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+            <field name="domain_force">['|', ('company_id', 'in', company_ids), ('id', '=', user.partner_id.id)]</field>
         </record>
         
         <record id="res_partner_isolation_rule_public" model="ir.rule">
@@ -34,7 +46,7 @@
             <field name="name">Partner Multi-Company Isolation (Portal Users)</field>
             <field name="model_id" ref="base.model_res_partner"/>
             <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
-            <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+            <field name="domain_force">['|', ('company_id', 'in', company_ids), ('id', 'child_of', user.commercial_partner_id.id)]</field>
         </record>
 
         <!-- ==================== PRODUCT.TEMPLATE RULES (ESTRICTAS) ==================== -->

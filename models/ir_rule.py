@@ -1,9 +1,6 @@
 from odoo import models, api
 from odoo.http import request
-from odoo.orm.domains import Domain
-
-# Modelos afectados por las reglas de aislamiento multicompañía de este módulo
-ISOLATION_MODELS = {'res.partner', 'product.template', 'product.product', 'product.public.category'}
+from odoo.fields import Domain
 
 
 class IrRule(models.Model):
@@ -12,61 +9,60 @@ class IrRule(models.Model):
     @api.model
     def _compute_domain(self, model_name, mode="read"):
         """
-        Override to apply multicompany isolation rules.
-        Admins get bypass ONLY in backend, not in frontend (website context).
+        Override para res.partner: Aplicar aislamiento por empresa.
+        
+        Reglas:
+        - Usuarios internos (partner_share=False): siempre visibles (necesario para mail, seguidores)
+        - Contactos externos (partner_share=True): solo visibles si son de la empresa actual
+        - El propio partner del usuario: siempre visible
         """
-        user = self.env.user
-        is_admin = False
-        is_frontend = False
+        if model_name == 'res.partner':
+            user = self.env.user
+            company_id = self.env.company.id
+            company_ids = self.env.context.get('allowed_company_ids', [company_id])
+            user_partner_id = user.partner_id.id
+            
+            return Domain([
+                '|', '|',
+                ('partner_share', '=', False),
+                ('company_id', 'in', company_ids),
+                ('id', '=', user_partner_id)
+            ])
         
-        try:
-            is_admin = user.has_group('base.group_system')
-        except Exception:
-            pass
-        
-        # Check if we're in a frontend/website context
-        try:
-            if request and hasattr(request, 'env'):
-                website = request.env['website'].sudo().get_current_website()
-                is_frontend = bool(website)
-        except Exception:
-            pass
-        
-        # Solo bypass para admins en el BACKEND (no frontend)
-        # En el frontend, todos deben respetar el aislamiento por empresa
-        if is_admin and model_name in ISOLATION_MODELS and not is_frontend:
-            return Domain.TRUE
-        
-        result = super()._compute_domain(model_name, mode)
-        return result
+        return super()._compute_domain(model_name, mode)
 
     @api.model
     def _eval_context(self):
-        """Extend to include website company for multi-website isolation."""
+        """
+        Extend to use website company for frontend, or user's current company for backend.
+        Applies to ALL users, including admins.
+        """
         eval_context = super()._eval_context()
         
-        # Skip for admin users (they need full access to manage all companies)
-        user = self.env.user
-        try:
-            is_admin = user.has_group('base.group_system')
-            if is_admin:
-                return eval_context
-        except Exception:
-            pass
-        
-        # Try to get the current website's company
         website_company_id = None
+        is_frontend = False
+        
         try:
-            if request and hasattr(request, 'env'):
-                website = request.env['website'].sudo().get_current_website()
-                if website and website.company_id:
-                    website_company_id = website.company_id.id
+            if request and hasattr(request, 'httprequest'):
+                path = request.httprequest.path or ''
+                backend_prefixes = ('/web', '/jsonrpc', '/xmlrpc', '/longpolling', '/mail', '/bus', '/websocket')
+                is_backend_path = any(path.startswith(prefix) for prefix in backend_prefixes)
+                
+                if not is_backend_path and hasattr(request, 'env'):
+                    website = request.env['website'].sudo().get_current_website()
+                    if website and website.company_id:
+                        website_company_id = website.company_id.id
+                        is_frontend = True
         except Exception:
             pass
         
-        # If we have a website company, use it; otherwise fall back to user's company
-        if website_company_id:
+        if is_frontend and website_company_id:
             eval_context['company_id'] = website_company_id
             eval_context['company_ids'] = [website_company_id]
+        else:
+            current_company = self.env.company.id
+            allowed_companies = self.env.context.get('allowed_company_ids', [current_company])
+            eval_context['company_id'] = current_company
+            eval_context['company_ids'] = allowed_companies
         
         return eval_context
