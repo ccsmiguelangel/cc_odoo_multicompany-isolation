@@ -31,11 +31,18 @@ class IrRule(models.Model):
             else:
                 company_ids = context_company_ids
             
+            # Obtener los partner_id de las compañías del usuario (para ver "My Company" etc.)
+            company_partner_ids = self.env['res.company'].sudo().search([
+                ('id', 'in', company_ids)
+            ]).mapped('partner_id').ids
+            
             return Domain([
-                '|', '|',
+                '|', '|', '|', '|',
                 ('partner_share', '=', False),
                 ('company_id', 'in', company_ids),
-                ('id', '=', user_partner_id)
+                ('id', '=', user_partner_id),
+                ('id', 'in', company_partner_ids),
+                '&', ('is_company', '=', True), ('company_id', '=', False)
             ])
         
         return super()._compute_domain(model_name, mode)
