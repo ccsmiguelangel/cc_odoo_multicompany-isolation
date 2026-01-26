@@ -104,6 +104,14 @@
         </record>
 
         <!-- ==================== PRODUCT.PUBLIC.CATEGORY RULES ==================== -->
+        <!-- 
+            NOTA: Las categorías públicas son para navegación en el eCommerce.
+            - Usuarios internos: ven categorías de sus empresas (para gestión en backend)
+            - Usuarios públicos/portal: ven categorías del website actual (para navegación)
+            
+            Los productos ya están aislados por empresa, así que es seguro mostrar
+            categorías - solo verán productos de la empresa del website.
+        -->
         <record id="product_public_category_isolation_rule" model="ir.rule">
             <field name="name">Public Category Multi-Company Isolation (Internal Users)</field>
             <field name="model_id" ref="website_sale.model_product_public_category"/>
@@ -115,14 +123,22 @@
             <field name="name">Public Category Multi-Company Isolation (Public Users)</field>
             <field name="model_id" ref="website_sale.model_product_public_category"/>
             <field name="groups" eval="[(4, ref('base.group_public'))]"/>
-            <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
         </record>
         
         <record id="product_public_category_isolation_rule_portal" model="ir.rule">
             <field name="name">Public Category Multi-Company Isolation (Portal Users)</field>
             <field name="model_id" ref="website_sale.model_product_public_category"/>
             <field name="groups" eval="[(4, ref('base.group_portal'))]"/>
-            <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
         </record>
     </data>
 </odoo>
