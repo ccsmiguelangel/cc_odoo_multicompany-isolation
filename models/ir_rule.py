@@ -9,13 +9,14 @@ class IrRule(models.Model):
     @api.model
     def _compute_domain(self, model_name, mode="read"):
         """
-        Override para res.partner: Aplicar aislamiento por empresa.
+        Override para res.partner: Aplicar aislamiento por empresa para CONTACTOS EXTERNOS.
         
         Reglas:
-        - Usuarios internos (partner_share=False): siempre visibles (necesario para mail, seguidores)
-        - Contactos externos (partner_share=True): solo visibles si son de la empresa actual
+        - Usuarios internos (partner_share=False): siempre visibles (necesario para mail, menciones, etc.)
+        - Contactos externos (partner_share=True): SOLO de la empresa seleccionada actualmente
         - El propio partner del usuario: siempre visible
-        - Administradores: acceso a TODAS sus empresas asignadas
+        - Partners de las compañías seleccionadas (para ver "My Company" etc.)
+        - Compañías globales (is_company=True, company_id=False): visibles para todos
         """
         if model_name == 'res.partner':
             user = self.env.user
@@ -23,27 +24,30 @@ class IrRule(models.Model):
             context_company_ids = self.env.context.get('allowed_company_ids', [company_id])
             user_partner_id = user.partner_id.id
             
-            # Para administradores: usar TODAS sus empresas asignadas
-            # Para otros usuarios: usar solo las empresas del contexto (seleccionadas)
-            is_admin = user.has_group('base.group_system')
-            if is_admin:
-                company_ids = user.company_ids.ids if user.company_ids else context_company_ids
-            else:
-                company_ids = context_company_ids
+            # SIEMPRE usar solo las empresas del contexto (seleccionadas actualmente)
+            company_ids = context_company_ids
             
-            # Obtener los partner_id de las compañías del usuario (para ver "My Company" etc.)
+            # Obtener los partner_id de las compañías seleccionadas (para ver "My Company" etc.)
             company_partner_ids = self.env['res.company'].sudo().search([
                 ('id', 'in', company_ids)
             ]).mapped('partner_id').ids
             
-            return Domain([
+            # Dominio con aislamiento para contactos EXTERNOS:
+            # - partner_share=False (usuarios internos): siempre visible para colaboración
+            # - partner_share=True (contactos externos): solo de la empresa seleccionada
+            # - Partner propio del usuario: siempre visible
+            # - Partners de las compañías: siempre visible
+            # - Compañías globales: siempre visible
+            domain = Domain([
                 '|', '|', '|', '|',
-                ('partner_share', '=', False),
-                ('company_id', 'in', company_ids),
+                ('partner_share', '=', False),  # Usuarios internos - necesario para mail/discuss
+                '&', ('partner_share', '=', True), ('company_id', 'in', company_ids),  # Contactos externos SOLO de empresa actual
                 ('id', '=', user_partner_id),
                 ('id', 'in', company_partner_ids),
-                '&', ('is_company', '=', True), ('company_id', '=', False)
+                '&', ('is_company', '=', True), ('company_id', '=', False)  # Compañías globales
             ])
+            
+            return domain
         
         return super()._compute_domain(model_name, mode)
 
@@ -57,6 +61,7 @@ class IrRule(models.Model):
         
         website_company_id = None
         is_frontend = False
+        path = ''
         
         try:
             if request and hasattr(request, 'httprequest'):
